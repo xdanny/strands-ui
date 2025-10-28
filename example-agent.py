@@ -7,27 +7,35 @@
 # ]
 # ///
 """
-Example Strands Agent with UI Integration and Session Persistence
+Example: Integrating Strands UI with Your Agent
 
-This example shows how to add UI visualization and session persistence to your
-Strands agent. The agent runs independently, the UI displays events in real-time,
-and all conversations are saved to strands_sessions/ for review and continuation.
+This example demonstrates how to add UI visualization to any Strands agent project.
+The agent code can live anywhere - you just copy ui_hooks.py and add UIHooks.
 
-Usage:
-    # 1. Start everything from project root:
+Setup:
+    # 1. Start the Strands UI (once, leave it running):
+    cd /path/to/strands-ui
     npm start
 
-    # 2. Create a session in the UI (http://localhost:3000) and copy the session ID
+    # 2. In YOUR agent project (anywhere):
+    # Copy ui_hooks.py to your project
+    # Add UIHooks to your agent (see code below)
 
-    # 3. Run your agent with that session ID:
+Usage:
+    # Run your agent (this example script):
     uv run example-agent.py --session-id <SESSION_ID> "Your question"
 
-    # 4. Watch the UI update in real-time!
+    # The session ID can be:
+    # - From UI: Create a session at http://localhost:3000 and copy the ID
+    # - Generated: Use any UUID (agent will create a new session)
 
-    # 5. Restart the agent with the same session ID to continue the conversation:
-    uv run example-agent.py --session-id <SESSION_ID> "Follow-up question"
+    # View results at http://localhost:3000
 
-The agent will maintain full context from previous messages thanks to session persistence.
+Benefits:
+    - Works from any project directory
+    - No need to run agent from strands-ui repo
+    - Multiple agents can connect to one UI instance
+    - Full session persistence across restarts
 """
 
 import sys

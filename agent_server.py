@@ -9,21 +9,29 @@
 # ]
 # ///
 """
-Strands Agent HTTP Server
+Strands Agent HTTP Server - REFERENCE IMPLEMENTATION / BLUEPRINT
 
-Serves a Strands agent via FastAPI with UI hooks integration.
-This server imports your agent from my_agent.py and adds UI visualization.
+This is a template you can copy to your own agent projects. It provides:
+- FastAPI HTTP wrapper around your Strands agent
+- Session management for multiple concurrent conversations
+- UIHooks integration for visualization in Strands UI
+- Session persistence support
 
-Your agent code stays separate - this is just an HTTP wrapper with UI hooks.
-
-Usage:
-    uv run agent_server.py
+HOW TO USE:
+    1. Copy this file and my_agent.py to your agent project
+    2. Copy ui_hooks.py as well
+    3. Customize my_agent.py with your tools and logic
+    4. Run: uv run agent_server.py
+    5. Start Strands UI separately: cd /path/to/strands-ui && npm start
+    6. Chat at http://localhost:3000
 
 Architecture:
-    1. Frontend sends message to /chat endpoint
-    2. Server creates agent with UIHooks
-    3. Agent processes message and streams events to WebSocket
-    4. Frontend receives events and updates UI
+    1. Frontend (running separately) sends message to /chat endpoint
+    2. Server creates/reuses agent with UIHooks for the session
+    3. Agent processes message and streams events to WebSocket server
+    4. Frontend receives events and updates UI in real-time
+
+Your agent code stays separate - this is just an HTTP wrapper with UI hooks.
 """
 
 from fastapi import FastAPI, HTTPException

@@ -16,134 +16,177 @@ A modern web interface for [Strands Agents](https://strandsagents.com), providin
 
 ## Architecture
 
-Your agent runs independently and connects directly to the UI:
+Strands UI is a **standalone service** that your agents connect to. Run it once, and any number of agent projects can visualize their work through it.
 
 ```
-┌──────────────┐              ┌──────────────┐
-│ Your Agent   │              │   Frontend   │
-│              │              │              │
-│  + UIHooks   │  WebSocket   │  Next.js UI  │
-│              │ ◄──────────► │  + WS Server │
-└──────────────┘              └──────────────┘
+┌─────────────────┐         ┌──────────────────┐
+│  Your Agent     │         │                  │
+│  Project A      │────┐    │   Strands UI     │
+│  + UIHooks      │    │    │  (standalone)    │
+└─────────────────┘    │    │                  │
+                       ├───►│  WebSocket Server│
+┌─────────────────┐    │    │  + Next.js UI    │
+│  Your Agent     │────┘    │                  │
+│  Project B      │         │  Port 3000, 8000 │
+│  + UIHooks      │         │                  │
+└─────────────────┘         └──────────────────┘
 ```
+
+**Key concept:** The UI is separate from your agent code. Multiple agents can connect simultaneously.
 
 ## Quick Start
 
-### 1. Clone and Install
+### 1. Start the Standalone UI
 
 ```bash
 git clone https://github.com/yourusername/strands-ui
 cd strands-ui
 npm install
-```
-
-### 2. Start Everything
-
-From the project root, run:
-
-```bash
 npm start
 ```
 
-This single command starts all three components:
-- **WebSocket Server** (port 8000) - Relays events between agent and UI
+This starts the standalone UI service:
+- **WebSocket Server** (port 8000) - Relays events between agents and UI
 - **Next.js Frontend** (port 3000) - The web interface
-- **Agent Server** (port 8001) - FastAPI server wrapping your agent
 
-### 3. Use the UI
+**Leave this running** - it's your visualization hub for any agent project.
+
+### 2. Connect Your Agent
+
+In your agent project (can be anywhere):
+
+**Option A: Using the provided agent server (FastAPI wrapper)**
+```bash
+# Copy agent_server.py and my_agent.py to your project as templates
+uv run agent_server.py
+```
+
+Then open `http://localhost:3000`, create a session, and chat!
+
+**Option B: Direct UIHooks integration**
+```python
+from ui_hooks import UIHooks
+
+agent = Agent(
+    model=your_model,
+    hooks=[UIHooks(session_id=session_id, websocket_url="ws://localhost:8000")]
+)
+```
+
+### 3. Watch in Real-Time
 
 1. Open `http://localhost:3000`
-2. Click "Create Session"
-3. Type your message and press Enter
-4. Watch the agent respond in real-time with full markdown rendering!
+2. Your agent's activity appears automatically with full markdown rendering
+3. All conversations are saved to `strands_sessions/` and persist across restarts
 
-That's it! All conversations are automatically saved to `strands_sessions/` and persist across restarts.
+**That's it!** The UI is now a service that any of your agent projects can connect to.
 
 ## How It Works
 
-The system has three components:
+### Core Components
 
-1. **Frontend UI** (`frontend/`) - Creates sessions, sends messages, displays responses
-2. **WebSocket Server** (`frontend/server.js`) - Relays events between agent and UI
-3. **Agent Server** (`agent_server.py`) - HTTP wrapper around your Strands agent
+**Strands UI (this repo):**
+1. **Frontend UI** (`frontend/`) - Creates sessions, displays responses with markdown
+2. **WebSocket Server** (`frontend/server.js`) - Relays events between agents and UI
 
-**Your Agent** (`my_agent.py`):
-- Define your tools, model, and system prompt
-- Keep your agent logic separate and reusable
-- Can be used with or without UI
+**Your Agent Project (anywhere):**
+3. **Your Agent Code** - Define tools, model, and logic
+4. **UIHooks Integration** - One line to connect to the UI
 
-**Flow**:
-1. User creates session in UI → generates session ID
-2. User types message → sent to agent server via HTTP POST `/chat`
-3. Agent server imports your agent and adds UIHooks
-4. Agent processes with UIHooks → streams events to WebSocket server
-5. WebSocket server → broadcasts events to UI
-6. UI updates in real-time
+### Provided Templates
 
-## Using with Your Own Agent
+This repo includes reference implementations you can copy to your projects:
 
-The key pattern is: **Your agent stays separate, UI is just added via hooks**
+- **`agent_server.py`** - FastAPI wrapper that provides HTTP `/chat` endpoint (optional)
+- **`my_agent.py`** - Example agent configuration showing how to structure your agent
+- **`example-agent.py`** - Standalone script showing direct UIHooks integration
 
-### Step 1: Create Your Agent
+**These are blueprints** - copy and adapt them to your project structure.
+
+### Flow (with agent_server.py approach)
+
+1. UI running standalone on ports 3000/8000
+2. User creates session in UI → generates session ID
+3. User types message → sent to your agent server via HTTP POST `/chat`
+4. Your agent processes with UIHooks → streams events to WebSocket server
+5. WebSocket server → broadcasts to all connected UI clients
+6. UI updates in real-time with markdown rendering
+
+### Flow (with direct UIHooks)
+
+1. UI running standalone on ports 3000/8000
+2. Your agent runs anywhere with UIHooks configured
+3. Agent processes messages → streams events to WebSocket server
+4. UI displays events in real-time
+
+## Using with Your Own Agent Project
+
+The key pattern is: **Your agent code lives in your project, you just add UIHooks to visualize it.**
+
+### Method 1: Copy the Blueprint (Recommended for HTTP API)
+
+Copy `agent_server.py` and `my_agent.py` to your project as templates:
+
+```bash
+# In your agent project
+cp /path/to/strands-ui/agent_server.py .
+cp /path/to/strands-ui/my_agent.py .
+cp /path/to/strands-ui/ui_hooks.py .
+```
+
+Then customize `my_agent.py` with your tools and logic:
 
 ```python
-# my_agent.py
+# your_project/my_agent.py
 from strands import Agent, tool
 
 @tool
-def my_tool(arg: str) -> str:
-    """Your tool
-
-    Args:
-        arg: Description of argument
-    """
+def your_custom_tool(arg: str) -> str:
+    """Your tool logic here"""
     return result
 
 def create_my_agent(session_id=None, ui_hooks=None):
-    """Create your agent with optional session persistence and UI hooks"""
+    """Create your agent"""
     hooks = [ui_hooks] if ui_hooks else []
 
     return Agent(
         model=your_model,
-        session_id=session_id,  # Enables persistence to strands_sessions/
-        tools=[my_tool],
+        session_id=session_id,  # Enables persistence
+        tools=[your_custom_tool],
         hooks=hooks,
         system_prompt="Your prompt"
     )
 ```
 
-### Step 2: Agent Server is Ready
-
-`agent_server.py` already imports from `my_agent.py`:
-
-```python
-# agent_server.py (already configured!)
-from my_agent import create_my_agent
-from ui_hooks import UIHooks
-
-@app.post("/chat")
-async def chat(request: ChatRequest):
-    agent = create_my_agent(
-        session_id=request.session_id,  # Enables persistence
-        ui_hooks=UIHooks(request.session_id, "ws://localhost:8000")
-    )
-    response = agent(request.message)
-    return ChatResponse(...)
-```
-
-### Step 3: Run Everything
-
-From the project root:
+Run your agent server (agent_server.py already imports from my_agent.py):
 
 ```bash
-# Start all services (WebSocket + Frontend + Agent Server)
-npm start
-
-# Or test your agent without UI
-uv run my_agent.py "Your question"
+# In your agent project
+uv run agent_server.py
 ```
 
-**That's it!** Just edit `my_agent.py` with your tools and configuration. All sessions are automatically persisted to `strands_sessions/` and can be reviewed even after restarting the servers.
+### Method 2: Direct Integration (Recommended for Script-based Agents)
+
+Just add UIHooks to your existing agent:
+
+```python
+# your_existing_agent.py
+from ui_hooks import UIHooks  # Copy ui_hooks.py to your project
+import uuid
+
+session_id = str(uuid.uuid4())
+
+agent = Agent(
+    model=your_model,
+    session_id=session_id,
+    tools=your_tools,
+    hooks=[UIHooks(session_id=session_id, websocket_url="ws://localhost:8000")]
+)
+
+response = agent("Your query")
+```
+
+**That's it!** As long as Strands UI is running (`npm start` in the strands-ui repo), your agent will visualize in the UI.
 
 ## Session Persistence
 
@@ -241,27 +284,26 @@ response = agent("Your query")
 
 ### Running the Application
 
-**Recommended: Start everything together (from project root)**
+**Start the UI (do this once, leave it running):**
 ```bash
+# In strands-ui repo
 npm start
 ```
 
 This starts:
 - WebSocket server (port 8000)
 - Next.js frontend (port 3000)
-- Agent server (port 8001)
 
-**Advanced: Start services separately**
+**Start your agent(s) (in your project directories):**
 ```bash
-# Terminal 1: WebSocket server
-npm run ws
+# In your agent project
+uv run agent_server.py
 
-# Terminal 2: Next.js UI
-npm run dev:frontend
-
-# Terminal 3: Agent server
-npm run dev:backend
+# Or run your agent script directly with UIHooks
+uv run your_agent.py
 ```
+
+**Multiple agents:** You can run multiple agent projects simultaneously - they'll all connect to the same UI and can be viewed in different sessions.
 
 ### Viewing Agent Activity
 

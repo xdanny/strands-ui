@@ -3,10 +3,9 @@
   "version": "1.0.0",
   "description": "Web UI for Strands CLI agent interactions",
   "scripts": {
-    "start": "concurrently \"npm run ws\" \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "start": "concurrently \"npm run ws\" \"npm run dev:frontend\"",
     "dev": "npm run start",
     "ws": "node frontend/server.js",
-    "dev:backend": "uv run fastapi dev agent_server.py --port 8001",
     "dev:frontend": "cd frontend && npm run dev",
     "install": "npm run install:frontend",
     "install:frontend": "cd frontend && npm install",
