@@ -16,14 +16,20 @@ build/
 uv.lock
 .uv/
 
-# Environment files
+# Environment files - DO NOT COMMIT
 .env
 .env.local
+.env.*.local
 backend/.env
+*.key
+*.pem
+credentials.json
 
-# Sessions and data
+# Sessions and data - DO NOT COMMIT
 backend/sessions/
 sessions/
+strands_sessions/
+*.transcript.json
 
 # IDEs
 .vscode/

@@ -9,9 +9,9 @@ import { ThinkingDisplay } from "@/components/ThinkingDisplay";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
-import { createSession, getSession, stopSession, resumeSession } from "@/lib/api";
+import { createSession, getSessionEvents, addSessionEvent } from "@/lib/sessions";
 import { StrandsWebSocket, WSEvent } from "@/lib/websocket";
-import { AlertCircle, Loader2, XCircle } from "lucide-react";
+import { AlertCircle, Copy, Check } from "lucide-react";
 
 export default function Home() {
   const {
@@ -23,14 +23,13 @@ export default function Home() {
     setConnected,
     setEvents,
     clearEvents,
-    sessions,
-    setSessions
   } = useStore();
 
   const [ws, setWs] = useState<StrandsWebSocket | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
+  const [copiedSessionId, setCopiedSessionId] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new events arrive
@@ -52,98 +51,103 @@ export default function Home() {
     }
   }, [events]);
 
-  const handleNewSession = async () => {
-    setIsLoading(true);
-    setError(null);
+  const handleNewSession = () => {
+    // Create new session in localStorage
+    const session = createSession();
 
-    try {
-      // Disconnect existing WebSocket if any
-      if (ws) {
-        ws.close();
-      }
-
-      // Create new session
-      const data = await createSession();
-      setCurrentSession(data.session_id);
-
-      // Connect WebSocket
-      const newWs = new StrandsWebSocket(data.session_id);
-      newWs.on((event) => {
-        addEvent(event);
-      });
-
-      await newWs.connect();
-      setWs(newWs);
-      setConnected(true);
-
-      // Refresh sessions list
-      const { sessions: updatedSessions } = await import("@/lib/api").then(m => m.listSessions());
-      setSessions(updatedSessions);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create session");
-      console.error("Error creating session:", err);
-    } finally {
-      setIsLoading(false);
-    }
+    // Connect to it
+    handleSelectSession(session.session_id);
   };
 
   const handleSelectSession = async (sessionId: string) => {
-    setIsLoading(true);
-    setError(null);
-    clearEvents();
-
     try {
-      // Disconnect existing WebSocket
+      setError(null);
+
+      // Close existing WebSocket
       if (ws) {
         ws.close();
       }
 
-      // Load session data
-      const sessionData = await getSession(sessionId);
-      setCurrentSession(sessionId);
-      setEvents(sessionData.transcript || []);
+      // Load existing events from localStorage
+      const existingEvents = getSessionEvents(sessionId);
+      setEvents(existingEvents);
 
-      // If session is not running, resume it to restore conversation context
-      if (!sessionData.is_running) {
-        await resumeSession(sessionId);
-      }
+      // Set as current session
+      setCurrentSession(sessionId);
 
       // Connect WebSocket
       const newWs = new StrandsWebSocket(sessionId);
-      newWs.on((event) => {
+
+      // Register event handler
+      newWs.on((event: WSEvent) => {
+        console.log("Received event:", event.type);
         addEvent(event);
+
+        // Save to localStorage
+        addSessionEvent(sessionId, event);
       });
 
-      await newWs.connect();
+      // Connect and handle result
+      newWs.connect()
+        .then(() => {
+          console.log("WebSocket connected");
+          setConnected(true);
+        })
+        .catch((error) => {
+          console.error("WebSocket connection failed:", error);
+          setError("Failed to connect to WebSocket server");
+          setConnected(false);
+        });
+
       setWs(newWs);
-      setConnected(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load session");
-      console.error("Error loading session:", err);
-    } finally {
-      setIsLoading(false);
+
+    } catch (error) {
+      console.error("Failed to select session:", error);
+      setError(error instanceof Error ? error.message : "Failed to select session");
     }
   };
 
-  const handleSendMessage = (message: string) => {
-    if (ws && isConnected) {
-      ws.sendInput(message);
-    }
-  };
-
-  const handleStopSession = async () => {
+  const handleCopySessionId = async () => {
     if (!currentSessionId) return;
 
     try {
-      await stopSession(currentSessionId);
-      if (ws) {
-        ws.close();
-        setWs(null);
+      await navigator.clipboard.writeText(currentSessionId);
+      setCopiedSessionId(true);
+      setTimeout(() => setCopiedSessionId(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy session ID:", error);
+    }
+  };
+
+  const handleSendMessage = async (message: string) => {
+    if (!currentSessionId || isSending) return;
+
+    setIsSending(true);
+    setError(null);
+
+    try {
+      const response = await fetch("http://localhost:8001/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          session_id: currentSessionId,
+          message: message,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send message to agent");
       }
-      setConnected(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to stop session");
-      console.error("Error stopping session:", err);
+
+      // Agent response will come through WebSocket hooks
+      // No need to handle response here
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      setError(error instanceof Error ? error.message : "Failed to send message");
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -155,118 +159,125 @@ export default function Home() {
         currentSessionId={currentSessionId}
       />
 
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className="border-b p-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">Strands UI</h1>
-            {currentSessionId && (
-              <p className="text-sm text-muted-foreground">
-                Session: {currentSessionId.slice(0, 8)}...
-                {isConnected && <span className="ml-2 text-green-600">● Connected</span>}
-                {!isConnected && currentSessionId && <span className="ml-2 text-gray-600">● Disconnected</span>}
-              </p>
-            )}
+      <main className="flex-1 flex flex-col">
+        {/* Header with session ID */}
+        {currentSessionId && (
+          <div className="border-b px-6 py-3 bg-muted/30">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium">Current Session</div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
+                  <span>{currentSessionId}</span>
+                  <button
+                    onClick={handleCopySessionId}
+                    className="p-1 hover:bg-accent rounded transition-colors"
+                    title="Copy session ID"
+                  >
+                    {copiedSessionId ? (
+                      <Check className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`flex items-center gap-2 text-sm ${isConnected ? "text-green-600" : "text-muted-foreground"}`}>
+                  <div className={`h-2 w-2 rounded-full ${isConnected ? "bg-green-600" : "bg-gray-400"}`} />
+                  {isConnected ? "Connected" : "Waiting for agent..."}
+                </div>
+              </div>
+            </div>
           </div>
-          {currentSessionId && isConnected && (
-            <Button variant="destructive" size="sm" onClick={handleStopSession}>
-              <XCircle className="h-4 w-4 mr-2" />
-              Stop Session
-            </Button>
-          )}
-        </div>
+        )}
 
-        {/* Main Content */}
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {!currentSessionId && !isLoading && (
-            <div className="flex-1 flex items-center justify-center text-center p-8">
-              <div>
-                <h2 className="text-2xl font-semibold mb-2">Welcome to Strands UI</h2>
-                <p className="text-muted-foreground mb-6">
-                  Create a new session or select an existing one to get started
-                </p>
-                <Button onClick={handleNewSession}>
-                  Create New Session
-                </Button>
+        {!currentSessionId ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-4 max-w-md">
+              <h1 className="text-2xl font-semibold">Strands UI</h1>
+              <p className="text-muted-foreground">
+                Create a new session to visualize your Strands agent in real-time.
+              </p>
+              <Button onClick={handleNewSession} size="lg">
+                Create Session
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Chat Area */}
+            <ScrollArea className="flex-1 px-6 py-4">
+              <div className="max-w-4xl mx-auto space-y-4">
+                {error && (
+                  <div className="flex items-center gap-2 text-destructive bg-destructive/10 p-3 rounded-lg">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-sm">{error}</span>
+                  </div>
+                )}
+
+                {events.length === 0 && (
+                  <div className="text-center text-muted-foreground py-8 space-y-4">
+                    <p>Session created! Send a message to start.</p>
+                    <p className="text-xs">
+                      Make sure the agent server is running:
+                    </p>
+                    <code className="block bg-muted px-4 py-2 rounded font-mono text-xs">
+                      uv run agent_server.py
+                    </code>
+                  </div>
+                )}
+
+                {events.map((event, index) => {
+                  const key = `${event.type}-${event.timestamp}-${index}`;
+
+                  // Tool calls - pair start and end events
+                  if (event.type === "tool_call_start") {
+                    const endEvent = events.find(
+                      (e, i) => i > index && e.type === "tool_call_end" && e.tool_id === event.tool_id
+                    );
+                    return <ToolCallDisplay key={key} startEvent={event} endEvent={endEvent} />;
+                  }
+
+                  // Skip tool_call_end (already rendered with start)
+                  if (event.type === "tool_call_end") {
+                    return null;
+                  }
+
+                  // Skip system events
+                  if (
+                    event.type === "session_start" ||
+                    event.type === "session_end" ||
+                    event.type === "invocation_start" ||
+                    event.type === "invocation_end" ||
+                    event.type === "thinking_start" ||
+                    event.type === "thinking_end" ||
+                    event.type === "agent_initialized"
+                  ) {
+                    return null;
+                  }
+
+                  // Render message
+                  return <ChatMessage key={key} event={event} />;
+                })}
+
+                <ThinkingDisplay isActive={isThinking} />
+
+                <div ref={scrollRef} />
+              </div>
+            </ScrollArea>
+
+            {/* Chat Input */}
+            <div className="border-t px-6 py-4">
+              <div className="max-w-4xl mx-auto">
+                <ChatInput
+                  onSend={handleSendMessage}
+                  disabled={isSending || isThinking}
+                />
               </div>
             </div>
-          )}
-
-          {isLoading && (
-            <div className="flex-1 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          )}
-
-          {error && (
-            <div className="m-4 p-4 bg-destructive/10 border border-destructive/30 rounded-lg flex items-start gap-2">
-              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium text-destructive">Error</p>
-                <p className="text-sm text-destructive/80">{error}</p>
-              </div>
-            </div>
-          )}
-
-          {currentSessionId && !isLoading && (
-            <>
-              <ScrollArea className="flex-1 p-4">
-                <div className="max-w-4xl mx-auto">
-                  {events.length === 0 && (
-                    <div className="text-center text-muted-foreground p-8">
-                      Session started. Send a message to begin.
-                    </div>
-                  )}
-
-                  {/* Render events with proper components */}
-                  {events.map((event, index) => {
-                    const key = `${event.type}-${event.timestamp}-${index}`;
-
-                    // Tool calls - pair start and end events
-                    if (event.type === "tool_call_start") {
-                      // Find matching end event
-                      const endEvent = events.find(
-                        (e, i) => i > index && e.type === "tool_call_end" && e.tool_id === event.tool_id
-                      );
-                      return <ToolCallDisplay key={key} startEvent={event} endEvent={endEvent} />;
-                    }
-
-                    // Skip tool_call_end events (they're rendered with start)
-                    if (event.type === "tool_call_end") {
-                      return null;
-                    }
-
-                    // Skip system events
-                    if (event.type === "session_start" || event.type === "session_end" ||
-                        event.type === "agent_initialized" || event.type === "invocation_start" ||
-                        event.type === "invocation_end" || event.type === "thinking_start" ||
-                        event.type === "thinking_end") {
-                      return null;
-                    }
-
-                    // Render regular messages (user input, assistant messages, errors)
-                    return <ChatMessage key={key} event={event} />;
-                  })}
-
-                  {/* Show thinking indicator */}
-                  <ThinkingDisplay isActive={isThinking} />
-
-                  <div ref={scrollRef} />
-                </div>
-              </ScrollArea>
-
-              <div className="border-t p-4">
-                <div className="max-w-4xl mx-auto">
-                  <ChatInput
-                    onSend={handleSendMessage}
-                    disabled={!isConnected}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+          </>
+        )}
+      </main>
     </div>
   );
 }

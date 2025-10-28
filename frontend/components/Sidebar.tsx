@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
-import { listSessions, deleteSession, deleteAllSessions } from "@/lib/api";
+import { listSessions, deleteSession, deleteAllSessions } from "@/lib/sessions";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, MessageSquare, Trash2, X } from "lucide-react";
+import { Plus, MessageSquare, Trash2, X, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SidebarProps = {
@@ -17,22 +17,19 @@ type SidebarProps = {
 export function Sidebar({ onNewSession, onSelectSession, currentSessionId }: SidebarProps) {
   const { sessions, setSessions } = useStore();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     loadSessions();
   }, []);
 
-  const loadSessions = async () => {
-    try {
-      const data = await listSessions();
-      setSessions(data.sessions);
-    } catch (error) {
-      console.error("Failed to load sessions:", error);
-    }
+  const loadSessions = () => {
+    const sessions = listSessions();
+    setSessions(sessions);
   };
 
-  const handleDeleteSession = async (sessionId: string, event: React.MouseEvent) => {
-    event.stopPropagation(); // Prevent selecting the session
+  const handleDeleteSession = (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
 
     if (!confirm("Delete this session?")) {
       return;
@@ -40,13 +37,11 @@ export function Sidebar({ onNewSession, onSelectSession, currentSessionId }: Sid
 
     setDeletingId(sessionId);
     try {
-      await deleteSession(sessionId);
-      await loadSessions();
+      deleteSession(sessionId);
+      loadSessions();
 
-      // If we deleted the current session, clear it
       if (currentSessionId === sessionId) {
-        // You'll need to add this action to the store
-        window.location.reload(); // Quick fix for now
+        window.location.reload();
       }
     } catch (error) {
       console.error("Failed to delete session:", error);
@@ -56,18 +51,30 @@ export function Sidebar({ onNewSession, onSelectSession, currentSessionId }: Sid
     }
   };
 
-  const handleClearAll = async () => {
+  const handleClearAll = () => {
     if (!confirm(`Delete all ${sessions.length} sessions?`)) {
       return;
     }
 
     try {
-      await deleteAllSessions();
-      await loadSessions();
-      window.location.reload(); // Clear current session
+      deleteAllSessions();
+      loadSessions();
+      window.location.reload();
     } catch (error) {
       console.error("Failed to delete all sessions:", error);
       alert("Failed to delete all sessions");
+    }
+  };
+
+  const handleCopySessionId = async (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      setCopiedId(sessionId);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (error) {
+      console.error("Failed to copy session ID:", error);
     }
   };
 
@@ -112,30 +119,49 @@ export function Sidebar({ onNewSession, onSelectSession, currentSessionId }: Sid
                     <div className="text-sm font-medium truncate">
                       Session
                     </div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {session.session_id.slice(0, 8)}...
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       {new Date(session.created_at).toLocaleString()}
                     </div>
                     {session.message_count !== undefined && (
                       <div className="text-xs text-muted-foreground">
-                        {session.message_count} messages
+                        {session.message_count} events
                       </div>
                     )}
                   </div>
                 </div>
               </button>
-              <button
-                onClick={(e) => handleDeleteSession(session.session_id, e)}
-                disabled={deletingId === session.session_id}
-                className={cn(
-                  "absolute top-2 right-2 p-1.5 rounded-md",
-                  "opacity-0 group-hover:opacity-100 transition-opacity",
-                  "hover:bg-destructive hover:text-destructive-foreground",
-                  "disabled:opacity-50"
-                )}
-                title="Delete session"
-              >
-                <X className="h-3 w-3" />
-              </button>
+              <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={(e) => handleCopySessionId(session.session_id, e)}
+                  className={cn(
+                    "p-1.5 rounded-md",
+                    "hover:bg-muted",
+                    copiedId === session.session_id && "bg-green-500/10"
+                  )}
+                  title="Copy session ID"
+                >
+                  {copiedId === session.session_id ? (
+                    <Check className="h-3 w-3 text-green-500" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                </button>
+                <button
+                  onClick={(e) => handleDeleteSession(session.session_id, e)}
+                  disabled={deletingId === session.session_id}
+                  className={cn(
+                    "p-1.5 rounded-md",
+                    "hover:bg-destructive hover:text-destructive-foreground",
+                    "disabled:opacity-50"
+                  )}
+                  title="Delete session"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
             </div>
           ))}
 

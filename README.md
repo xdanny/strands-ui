@@ -4,285 +4,360 @@ A modern web interface for [Strands Agents](https://strandsagents.com), providin
 
 ## Features
 
-- **Real-time Agent Interaction**: Direct integration with Strands Agent using hooks-based architecture
-- **WebSocket Streaming**: Real-time event streaming for immediate feedback
-- **Session Management**: Create, resume, and manage multiple agent sessions
-- **Conversation Persistence**: Automatic session history with Strands FileSessionManager
+- **Real-time Agent Visualization**: See your agent's thinking, tool calls, and responses in real-time
+- **Simple Integration**: Just add `UIHooks` to your agent - one line of code
+- **No Backend Required**: WebSocket server runs alongside Next.js frontend
+- **Standalone Hook**: Copy `ui_hooks.py` to your project and go
 - **Tool Call Visualization**: Rich display of tool executions with inputs and outputs
 - **Thinking Indicators**: Visual feedback when the agent is processing
 - **Modern UI**: Clean, responsive interface built with Next.js 14 and Tailwind CSS
 
 ## Architecture
 
-The application uses Strands' built-in hook system for event capture:
+Your agent runs independently and connects directly to the UI:
 
 ```
-┌─────────────┐         WebSocket          ┌──────────────┐
-│   Browser   │ ◄────────────────────────► │    FastAPI   │
-│  (Next.js)  │         REST API           │    Backend   │
-└─────────────┘                            └──────┬───────┘
-                                                  │
-                                                  │ creates
-                                                  │
-                                            ┌─────▼────────┐
-                                            │ Strands Agent│
-                                            │  with Hooks  │
-                                            └──────────────┘
+┌──────────────┐              ┌──────────────┐
+│ Your Agent   │              │   Frontend   │
+│              │              │              │
+│  + UIHooks   │  WebSocket   │  Next.js UI  │
+│              │ ◄──────────► │  + WS Server │
+└──────────────┘              └──────────────┘
 ```
 
-### Key Components
+## Quick Start
 
-**Backend**:
-- `main.py` - FastAPI application with REST and WebSocket endpoints
-- `agent_session.py` - Manages Strands Agent instances with FileSessionManager
-- `ui_hooks.py` - HookProvider implementation capturing agent lifecycle events
-
-**Frontend**:
-- Next.js 14 App Router with React Server Components
-- WebSocket client for real-time event streaming
-- Structured event types for type-safe rendering
-- Zustand for state management
-
-## Prerequisites
-
-- Python 3.10+
-- Node.js 18+ and npm
-- Local model server (Ollama, LM Studio, or OpenAI-compatible endpoint)
-
-## Installation
-
-### 1. Clone the Repository
+### 1. Start the UI
 
 ```bash
-git clone <your-repo-url>
-cd strands-ui
-```
-
-### 2. Set up Python Environment
-
-```bash
-# Create a virtual environment
-python -m venv .venv
-
-# Activate it (Linux/Mac)
-source .venv/bin/activate
-
-# Or on Windows
-.venv\Scripts\activate
-
-# Install backend dependencies
-cd backend
-pip install -r requirements.txt
-cd ..
-```
-
-### 3. Set up Frontend
-
-```bash
-cd frontend
+git clone https://github.com/yourusername/strands-ui
+cd strands-ui/frontend
 npm install
-cd ..
+npm run start:all
 ```
 
-## Configuration
+This starts both the WebSocket server (port 8000) and Next.js UI (port 3000).
 
-### Backend Configuration
-
-The backend is configured in `backend/agent_session.py`. By default, it uses Ollama with the `openai/gpt-oss-20b` model:
-
-```python
-model = OpenAIModel(
-    client_args={
-        "base_url": "http://localhost:11434/v1",  # Ollama endpoint
-        "api_key": "not-needed",
-    },
-    model_id="openai/gpt-oss-20b",
-)
-```
-
-**To use a different model**:
-1. Edit `backend/agent_session.py`
-2. Update the `model` configuration in the `AgentSession.start()` method
-3. Options include: OpenAI, Anthropic, Bedrock, or other OpenAI-compatible endpoints
-
-### Frontend Configuration
-
-Create `frontend/.env.local`:
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-## Running the Application
-
-### Start the Backend
-
-```bash
-# From project root, with virtual environment activated
-python backend/main.py
-```
-
-The backend will start on `http://localhost:8000`
-
-### Start the Frontend
+### 2. Start the Agent Server
 
 In a new terminal:
 
 ```bash
-cd frontend
-npm run dev
+cd strands-ui
+uv run agent_server.py
 ```
 
-The frontend will start on `http://localhost:3000`
+This starts the FastAPI agent server on port 8001.
 
-### Access the UI
+### 3. Use the UI
 
-Open your browser and navigate to `http://localhost:3000`
+1. Open `http://localhost:3000`
+2. Click "Create Session"
+3. Type your message and press Enter
+4. Watch the agent respond in real-time!
+
+That's it! The UI and agent communicate automatically via WebSocket hooks.
+
+## How It Works
+
+The system has three components:
+
+1. **Frontend UI** (`frontend/`) - Creates sessions, sends messages, displays responses
+2. **WebSocket Server** (`frontend/server.js`) - Relays events between agent and UI
+3. **Agent Server** (`agent_server.py`) - HTTP wrapper around your Strands agent
+
+**Your Agent** (`my_agent.py`):
+- Define your tools, model, and system prompt
+- Keep your agent logic separate and reusable
+- Can be used with or without UI
+
+**Flow**:
+1. User creates session in UI → generates session ID
+2. User types message → sent to agent server via HTTP POST `/chat`
+3. Agent server imports your agent and adds UIHooks
+4. Agent processes with UIHooks → streams events to WebSocket server
+5. WebSocket server → broadcasts events to UI
+6. UI updates in real-time
+
+## Using with Your Own Agent
+
+The key pattern is: **Your agent stays separate, UI is just added via hooks**
+
+### Step 1: Create Your Agent
+
+```python
+# my_agent.py
+from strands import Agent, tool
+
+@tool
+def my_tool(arg: str) -> str:
+    """Your tool
+
+    Args:
+        arg: Description of argument
+    """
+    return result
+
+def create_my_agent(ui_hooks=None):
+    """Create your agent with optional UI hooks"""
+    hooks = [ui_hooks] if ui_hooks else []
+
+    return Agent(
+        model=your_model,
+        tools=[my_tool],
+        hooks=hooks,
+        system_prompt="Your prompt"
+    )
+```
+
+### Step 2: Agent Server is Ready
+
+`agent_server.py` already imports from `my_agent.py`:
+
+```python
+# agent_server.py (already configured!)
+from my_agent import create_my_agent
+from ui_hooks import UIHooks
+
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    agent = create_my_agent(
+        ui_hooks=UIHooks(request.session_id, "ws://localhost:8000")
+    )
+    response = agent(request.message)
+    return ChatResponse(...)
+```
+
+### Step 3: Run Everything
+
+```bash
+# Terminal 1: UI + WebSocket
+cd frontend && npm run start:all
+
+# Terminal 2: Agent Server
+uv run agent_server.py
+
+# Terminal 3: Test without UI (optional)
+uv run my_agent.py "Your question"
+```
+
+**That's it!** Just edit `my_agent.py` with your tools and configuration.
+
+## Installation Details
+
+### Prerequisites
+
+- Node.js 18+ and npm
+- Python 3.10+ with uv
+- Local model server (Ollama, LM Studio, or OpenAI-compatible endpoint)
+
+### UI Setup
+
+```bash
+cd frontend
+npm install
+```
+
+### Python Dependencies
+
+For `ui_hooks.py`:
+
+```bash
+uv pip install websockets
+```
+
+Or add to your `pyproject.toml`:
+
+```toml
+dependencies = [
+    "websockets>=12.0",
+]
+```
 
 ## Usage
 
-### Creating a Session
+### Adding UI Hooks to Your Agent
 
-1. Click "New Session" in the sidebar
-2. A new Strands Agent instance is created with hooks
-3. Start chatting with the agent
+```python
+import uuid
+from strands import Agent
+from ui_hooks import UIHooks
 
-### Resuming Sessions
+# Generate unique session ID
+session_id = str(uuid.uuid4())
 
-1. Old sessions are listed in the sidebar
-2. Click on any session to resume it
-3. Full conversation history is restored via FileSessionManager
+# Create agent with hooks
+agent = Agent(
+    model=your_model,
+    tools=your_tools,
+    hooks=[UIHooks(
+        session_id=session_id,
+        websocket_url="ws://localhost:8000"
+    )]
+)
 
-### Deleting Sessions
+# Use agent normally
+response = agent("Your query")
+```
 
-1. Hover over a session in the sidebar
-2. Click the X button to delete
-3. Or use "Clear All" to remove all sessions
+### Running the UI
 
-### Observing Agent Activity
+**Option 1: Start everything together**
+```bash
+cd frontend && npm run start:all
+```
 
-The UI provides structured visualization of:
-- **User messages** - Your input to the agent
-- **Agent responses** - The agent's text responses
-- **Tool calls** - Visual cards showing tool name, inputs, and results
-- **Thinking indicators** - Loading state while the agent processes
-- **Errors** - Clear error messages when issues occur
+**Option 2: Start separately**
+```bash
+# Terminal 1: WebSocket server
+cd frontend && npm run ws
+
+# Terminal 2: Next.js UI
+cd frontend && npm run dev
+```
+
+### Viewing Agent Activity
+
+1. Open `http://localhost:3000` in your browser
+2. Run your agent with UIHooks
+3. See real-time visualization of:
+   - User messages
+   - Agent responses
+   - Tool calls with inputs/outputs
+   - Thinking indicators
+   - Errors
 
 ## Project Structure
 
 ```
 strands-ui/
-├── backend/
-│   ├── main.py              # FastAPI application with endpoints
-│   ├── agent_session.py     # Agent instance and session management
-│   ├── ui_hooks.py          # Strands HookProvider implementation
-│   ├── requirements.txt     # Python dependencies
-│   └── sessions/            # UI transcript storage (gitignored)
+├── ui_hooks.py              # Standalone hook provider (copy this!)
+├── example-agent.py         # Example agent with UI integration
 │
 ├── frontend/
+│   ├── server.js            # WebSocket relay server
+│   ├── package.json         # Includes ws + concurrently
 │   ├── app/
 │   │   ├── page.tsx         # Main chat interface
-│   │   ├── layout.tsx       # Root layout
-│   │   └── globals.css      # Global styles
+│   │   └── globals.css      # Styles
 │   ├── components/
-│   │   ├── ChatMessage.tsx      # User/agent message display
-│   │   ├── ChatInput.tsx        # Message input component
-│   │   ├── Sidebar.tsx          # Session list sidebar
-│   │   ├── ToolCallDisplay.tsx  # Tool execution visualization
+│   │   ├── ChatMessage.tsx      # Message display
+│   │   ├── ChatInput.tsx        # Input component
+│   │   ├── ToolCallDisplay.tsx  # Tool visualization
 │   │   └── ThinkingDisplay.tsx  # Thinking indicator
-│   ├── lib/
-│   │   ├── api.ts           # REST API client
-│   │   ├── websocket.ts     # WebSocket client with event types
-│   │   ├── store.ts         # Zustand state management
-│   │   └── utils.ts         # Utility functions
-│   └── package.json
+│   └── lib/
+│       ├── websocket.ts     # WebSocket client
+│       └── store.ts         # State management
 │
-├── strands_sessions/        # Strands FileSessionManager storage (gitignored)
-├── .gitignore
-├── README.md
-└── CLAUDE.md                # Development documentation
+└── README.md
 ```
-
-## API Endpoints
-
-### REST API
-
-- `POST /api/sessions` - Create a new agent session
-- `GET /api/sessions` - List all saved sessions
-- `GET /api/sessions/{id}` - Get session details and transcript
-- `POST /api/sessions/{id}/resume` - Resume a stopped session with history
-- `POST /api/sessions/{id}/input` - Send input to a session
-- `POST /api/sessions/{id}/stop` - Stop a running session
-- `DELETE /api/sessions/{id}` - Delete a session and its data
-- `DELETE /api/sessions` - Delete all sessions
-
-### WebSocket
-
-- `WS /ws/{session_id}` - Real-time event streaming
-
-**Event Types**:
-- `session_start`, `session_end` - Session lifecycle
-- `user_input` - User messages
-- `message` - Agent responses
-- `thinking_start`, `thinking_end` - Processing indicators
-- `tool_call_start`, `tool_call_end` - Tool execution events
-- `error` - Error notifications
 
 ## How It Works
 
-### Hooks-Based Architecture
+### UIHooks
 
-Instead of parsing subprocess output, the application uses Strands' native hook system:
+The `ui_hooks.py` file is a Strands `HookProvider` that:
+1. Captures agent events (tool calls, messages, thinking states)
+2. Connects to the WebSocket server
+3. Streams events in real-time
+4. Requires only `websockets` package
 
-1. **UIHooks** (`ui_hooks.py`) implements the `HookProvider` interface
-2. Hooks capture events like:
-   - `MessageAddedEvent` - New messages in conversation
-   - `BeforeToolCallEvent`, `AfterToolCallEvent` - Tool execution
-   - `BeforeModelCallEvent`, `AfterModelCallEvent` - LLM calls
-3. Events are streamed to WebSocket clients in real-time
-4. Frontend components render events as structured data
+### WebSocket Server
 
-### Session Persistence
+The `frontend/server.js` Node.js server:
+1. Accepts connections from agents and frontend clients
+2. Routes events between agent and UI
+3. Manages multiple sessions simultaneously
+4. Lightweight (~70 lines of code)
 
-Sessions use Strands' `FileSessionManager`:
-- Automatic conversation history saving
-- Seamless session resumption
-- Per-session isolation
-- Stored in `strands_sessions/` directory
+### Frontend
+
+The Next.js UI:
+1. Connects to WebSocket server
+2. Receives and renders events
+3. Displays tool calls, messages, and thinking states
+4. No API calls needed - pure WebSocket streaming
+
+## Configuration
+
+### Change WebSocket Port
+
+**frontend/server.js**:
+```javascript
+const PORT = 8000;  // Change this
+```
+
+**ui_hooks.py usage**:
+```python
+UIHooks(session_id="...", websocket_url="ws://localhost:YOUR_PORT")
+```
+
+### Change Model
+
+Edit your agent configuration (or see `example-agent.py`):
+
+```python
+# For Ollama
+model = OpenAIModel(
+    client_args={"base_url": "http://localhost:11434/v1", "api_key": "not-needed"},
+    model_id="openai/gpt-oss-20b"
+)
+
+# For OpenAI
+model = OpenAIModel(
+    client_args={"api_key": os.getenv("OPENAI_API_KEY")},
+    model_id="gpt-4"
+)
+
+# For Anthropic
+from strands.models.anthropic import AnthropicModel
+model = AnthropicModel(
+    client_args={"api_key": os.getenv("ANTHROPIC_API_KEY")},
+    model_id="claude-3-5-sonnet-20241022"
+)
+```
 
 ## Troubleshooting
 
-### Backend won't start
+### WebSocket connection fails
 
-- Ensure Python 3.10+ is installed: `python --version`
-- Check virtual environment is activated
-- Verify all dependencies: `pip install -r backend/requirements.txt`
-- Check port 8000 is not in use
+- Ensure `frontend/server.js` is running: `npm run ws`
+- Check the port is 8000: `lsof -i :8000`
+- Verify URL in `UIHooks`: `ws://localhost:8000`
+
+### Events not showing in UI
+
+- Open browser console for errors
+- Check WebSocket connection status
+- Verify session ID matches between agent and UI
+- Ensure `websockets` package is installed: `uv pip install websockets`
 
 ### Frontend won't start
 
-- Ensure Node.js 18+ is installed: `node --version`
-- Try: `rm -rf frontend/node_modules && cd frontend && npm install`
-- Verify backend is running on port 8000
+- Ensure Node.js 18+: `node --version`
+- Install dependencies: `cd frontend && npm install`
+- Check for port conflicts (3000, 8000)
 
-### WebSocket connection fails
+## Deploying
 
-- Check `frontend/.env.local` has correct API URL
-- Verify CORS configuration in `backend/main.py`
-- Check browser console for connection errors
+### Deploy Frontend
 
-### Sessions not saving
+Deploy to Vercel, Netlify, or any Node.js host. The WebSocket server and Next.js app can run together:
 
-- Verify `sessions/` and `strands_sessions/` directories exist
-- Check file permissions on session directories
-- Look for errors in backend logs
+```bash
+npm run start:all
+```
 
-### Model not responding
+### Run Agent Anywhere
 
-- Verify your model server (Ollama/LM Studio) is running
-- Check the `base_url` in `backend/agent_session.py`
-- Confirm the model name is correct
-- Look for model-related errors in backend logs
+Your agent can run anywhere - local machine, server, container. Just point UIHooks to your deployed WebSocket URL:
+
+```python
+hooks=[UIHooks(
+    session_id=session_id,
+    websocket_url="wss://your-domain.com"  # Use wss:// for secure connection
+)]
+```
 
 ## Contributing
 

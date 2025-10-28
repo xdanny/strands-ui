@@ -72,12 +72,23 @@ export class StrandsWebSocket {
           resolve();
         };
 
-        this.ws.onmessage = (event) => {
+        this.ws.onmessage = async (event) => {
           try {
-            const data = JSON.parse(event.data) as WSEvent;
+            let messageData: string;
+
+            // Handle Blob data
+            if (event.data instanceof Blob) {
+              messageData = await event.data.text();
+            } else {
+              messageData = event.data;
+            }
+
+            const data = JSON.parse(messageData) as WSEvent;
             this.handlers.forEach((handler) => handler(data));
           } catch (error) {
             console.error("Error parsing WebSocket message:", error);
+            console.error("Message data type:", typeof event.data);
+            console.error("Message data:", event.data);
           }
         };
 
