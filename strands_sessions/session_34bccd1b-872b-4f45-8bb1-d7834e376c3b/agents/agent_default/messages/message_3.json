@@ -1,0 +1,14 @@
+{
+  "message": {
+    "role": "assistant",
+    "content": [
+      {
+        "text": "I can help with a wide range of tasks, including:\n\n| Category | What I can do |\n|----------|---------------|\n| **Coding & Programming** | Write, debug, and explain code in many languages (Python, JavaScript, Java, C++, etc.), generate scripts, refactor snippets, and help with algorithms. |\n| **Data Analysis & Visualization** | Assist with pandas/NumPy workflows, create plots with matplotlib/seaborn, explain statistical concepts, and guide SQL queries. |\n| **Machine Learning & AI** | Build models (scikit‑learn, TensorFlow, PyTorch), interpret results, suggest feature engineering, and discuss best practices. |\n| **Writing & Editing** | Draft emails, reports, essays, creative writing, or technical documentation; provide style suggestions and grammar checks. |\n| **Research Assistance** | Summarize articles, find sources, outline papers, explain concepts in science, math, history, etc. |\n| **Problem Solving** | Solve puzzles, logic problems, and math questions (algebra, calculus, probability). |\n| **Planning & Organization** | Create schedules, to‑do lists, project plans, or study guides. |\n| **Technical Support** | Troubleshoot common software/hardware issues, explain command‑line commands, and guide configuration steps. |\n\nJust let me know what you need help with!"
+      }
+    ]
+  },
+  "message_id": 3,
+  "redact_message": null,
+  "created_at": "2025-10-27T20:05:12.065279+00:00",
+  "updated_at": "2025-10-27T20:05:12.065279+00:00"
+}

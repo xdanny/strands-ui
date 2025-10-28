@@ -1,0 +1,137 @@
+#!/usr/bin/env -S uv run
+# /// script
+# dependencies = [
+#   "strands-agents-builder",
+#   "openai",
+# ]
+# ///
+"""
+Interactive Strands agent using Ollama/LM Studio OpenAI-compatible endpoint
+
+This provides an interactive CLI similar to the Strands CLI but configured
+for your local OpenAI-compatible endpoint.
+
+Usage:
+    uv run example-agent-interactive.py
+"""
+
+from strands import Agent
+from strands.models.openai import OpenAIModel
+import os
+import subprocess
+
+# Detect if running in WSL and get Windows host IP
+def get_ollama_host():
+    """Get the correct Ollama host URL (handles WSL)"""
+    # Check if running in WSL
+    if os.path.exists('/proc/version'):
+        with open('/proc/version', 'r') as f:
+            if 'microsoft' in f.read().lower():
+                # WSL detected - get Windows host IP
+                try:
+                    result = subprocess.run(
+                        ['ip', 'route', 'show'],
+                        capture_output=True,
+                        text=True
+                    )
+                    for line in result.stdout.split('\n'):
+                        if 'default' in line:
+                            host_ip = line.split()[2]
+                            return f"http://{host_ip}:11434/v1"
+                except:
+                    pass
+
+    # Default to localhost
+    return "http://localhost:11434/v1"
+
+# Configure the model
+model = OpenAIModel(
+    client_args={
+        # Running on Windows, use localhost
+        "base_url": "http://localhost:11434/v1",
+        "api_key": "not-needed",
+    },
+    model_id="openai/gpt-oss-20b",  # Your model name
+    params={
+        "temperature": 0.7,
+        "max_tokens": 2000,
+    }
+)
+
+# Create the agent
+agent = Agent(
+    model=model,
+    system_prompt="""You are a helpful AI assistant running locally via Ollama/LM Studio.
+You can help with coding, questions, analysis, and general tasks.
+Be concise but thorough in your responses."""
+)
+
+
+def main():
+    """Run interactive agent loop"""
+    # Set UTF-8 encoding for Windows console
+    import sys
+    if sys.platform == 'win32':
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+    print("=" * 60)
+    print("🤖 Strands Agent - Local OpenAI-Compatible Model")
+    print("=" * 60)
+    print(f"\nConfigured endpoint: http://localhost:11434/v1")
+    print("Model: openai/gpt-oss-20b")
+    print("\nType 'exit' or 'quit' to end the session")
+    print("Type 'help' for available commands")
+    print("=" * 60)
+    print()
+
+    while True:
+        try:
+            # Get user input
+            user_input = input("You: ").strip()
+
+            if not user_input:
+                continue
+
+            # Handle commands
+            if user_input.lower() in ['exit', 'quit', 'q']:
+                print("\n👋 Goodbye!")
+                break
+
+            if user_input.lower() == 'help':
+                print("\nAvailable commands:")
+                print("  exit, quit, q  - Exit the program")
+                print("  help           - Show this help message")
+                print("  clear          - Clear conversation history")
+                print("\nOr just type your question/request!")
+                print()
+                continue
+
+            if user_input.lower() == 'clear':
+                agent.messages.clear()
+                print("\n🗑️  Conversation history cleared\n")
+                continue
+
+            # Send to agent
+            print("\n💭 Thinking...\n")
+            response = agent(user_input)
+
+            # Just print the response without "Agent:" prefix
+            # The UI will add the label
+            print(response)
+            print()
+
+        except KeyboardInterrupt:
+            print("\n\n👋 Goodbye!")
+            break
+        except Exception as e:
+            print(f"\n❌ Error: {e}\n")
+            print("Make sure your local server is running!")
+            print("  - LM Studio: Check that the server is started")
+            print("  - Ollama: Run 'ollama serve' or check if service is running")
+            print()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,11 @@
+{
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "strands-agents"
+  ],
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:strandsagents.com)"
+    ]
+  }
+}
