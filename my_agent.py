@@ -67,17 +67,19 @@ def calculate(expression: str) -> str:
         return f"Error calculating '{expression}': {str(e)}"
 
 
-def create_my_agent(ui_hooks=None) -> Agent:
+def create_my_agent(session_id=None, ui_hooks=None) -> Agent:
     """
-    Create your custom agent with optional UI hooks.
+    Create your custom agent with optional session persistence and UI hooks.
 
     This function encapsulates all your agent configuration:
     - Model selection and parameters
     - Tools available to the agent
     - System prompt
+    - Optional session persistence
     - Optional UI hooks for visualization
 
     Args:
+        session_id: Optional session ID for persistence (stores in strands_sessions/)
         ui_hooks: Optional UIHooks instance for UI visualization
 
     Returns:
@@ -131,9 +133,15 @@ def create_my_agent(ui_hooks=None) -> Agent:
     if hooks:
         print(f"[Agent] Hook types: {[type(h).__name__ for h in hooks]}")
 
+    if session_id:
+        print(f"[Agent] Using session persistence: {session_id}")
+
     # Create and return the agent
     agent = Agent(
         model=model,
+
+        # Add session persistence if session_id is provided
+        session_id=session_id,
 
         # Add all your tools
         tools=[

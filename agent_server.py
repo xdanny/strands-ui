@@ -29,7 +29,9 @@ Architecture:
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import Optional, Dict, List
+import json
+from pathlib import Path
 
 # Import your agent
 from my_agent import create_my_agent
@@ -39,6 +41,9 @@ app = FastAPI(title="Strands Agent Server")
 
 # Store agent instances per session
 agent_sessions: Dict[str, any] = {}
+
+# Session persistence directory
+SESSIONS_DIR = Path("strands_sessions")
 
 # CORS middleware
 app.add_middleware(
@@ -82,6 +87,7 @@ async def chat(request: ChatRequest):
         if request.session_id not in agent_sessions:
             print(f"[Agent Server] Creating new agent for session {request.session_id}")
             agent = create_my_agent(
+                session_id=request.session_id,
                 ui_hooks=UIHooks(
                     session_id=request.session_id,
                     websocket_url="ws://localhost:8000"
