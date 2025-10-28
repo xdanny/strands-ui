@@ -7,21 +7,27 @@
 # ]
 # ///
 """
-Example Strands Agent with UI Integration
+Example Strands Agent with UI Integration and Session Persistence
 
-This example shows how to add UI visualization to your Strands agent by adding
-UIHooks. The agent runs independently, and the UI displays events in real-time.
+This example shows how to add UI visualization and session persistence to your
+Strands agent. The agent runs independently, the UI displays events in real-time,
+and all conversations are saved to strands_sessions/ for review and continuation.
 
 Usage:
-    # 1. Start the UI (WebSocket server + frontend):
-    cd frontend && npm run start:all
+    # 1. Start everything from project root:
+    npm start
 
-    # 2. Create a session in the UI and copy the session ID
+    # 2. Create a session in the UI (http://localhost:3000) and copy the session ID
 
     # 3. Run your agent with that session ID:
     uv run example-agent.py --session-id <SESSION_ID> "Your question"
 
     # 4. Watch the UI update in real-time!
+
+    # 5. Restart the agent with the same session ID to continue the conversation:
+    uv run example-agent.py --session-id <SESSION_ID> "Follow-up question"
+
+The agent will maintain full context from previous messages thanks to session persistence.
 """
 
 import sys
@@ -33,7 +39,7 @@ from strands.models.openai import OpenAIModel
 from ui_hooks import UIHooks
 
 def create_agent(session_id: str):
-    """Create agent with UI hooks for the given session ID"""
+    """Create agent with UI hooks and session persistence for the given session ID"""
 
     # Configure the model to use your local OpenAI-compatible endpoint
     model = OpenAIModel(
@@ -57,9 +63,13 @@ def create_agent(session_id: str):
         }
     )
 
-    # Create the agent with UI hooks enabled
+    # Create the agent with UI hooks and session persistence enabled
     agent = Agent(
         model=model,
+
+        # Enable session persistence - saves to strands_sessions/
+        # This allows the agent to maintain context across restarts
+        session_id=session_id,
 
         # Add UI hooks - connects to the UI session!
         hooks=[UIHooks(
@@ -92,18 +102,21 @@ def main():
     print(f"\n🤖 Query: {query}")
     print(f"📊 Session ID: {session_id}")
     print(f"🌐 UI: http://localhost:3000")
+    print(f"💾 Session will be saved to: strands_sessions/session_{session_id}/")
     print("\n💭 Thinking...\n")
 
-    # Create agent with the UI session ID
+    # Create agent with the UI session ID and session persistence
     agent = create_agent(session_id)
 
-    # Invoke the agent
+    # Invoke the agent (response is saved to disk automatically)
     response = agent(query)
 
     print("✅ Response:")
     print(response)
     print()
     print(f"💡 View this conversation in the UI at http://localhost:3000")
+    print(f"📂 Session data persisted to strands_sessions/session_{session_id}/")
+    print(f"🔄 Run again with same session ID to continue the conversation!")
 
 
 if __name__ == "__main__":

@@ -5,8 +5,10 @@ A modern web interface for [Strands Agents](https://strandsagents.com), providin
 ## Features
 
 - **Real-time Agent Visualization**: See your agent's thinking, tool calls, and responses in real-time
+- **Markdown Rendering**: Full markdown support with syntax highlighting for code blocks
+- **Session Persistence**: All agent conversations are saved to disk and persist across restarts
 - **Simple Integration**: Just add `UIHooks` to your agent - one line of code
-- **No Backend Required**: WebSocket server runs alongside Next.js frontend
+- **One Command Startup**: Run everything from root with `npm start`
 - **Standalone Hook**: Copy `ui_hooks.py` to your project and go
 - **Tool Call Visualization**: Rich display of tool executions with inputs and outputs
 - **Thinking Indicators**: Visual feedback when the agent is processing
@@ -27,36 +29,35 @@ Your agent runs independently and connects directly to the UI:
 
 ## Quick Start
 
-### 1. Start the UI
+### 1. Clone and Install
 
 ```bash
 git clone https://github.com/yourusername/strands-ui
-cd strands-ui/frontend
+cd strands-ui
 npm install
-npm run start:all
 ```
 
-This starts both the WebSocket server (port 8000) and Next.js UI (port 3000).
+### 2. Start Everything
 
-### 2. Start the Agent Server
-
-In a new terminal:
+From the project root, run:
 
 ```bash
-cd strands-ui
-uv run agent_server.py
+npm start
 ```
 
-This starts the FastAPI agent server on port 8001.
+This single command starts all three components:
+- **WebSocket Server** (port 8000) - Relays events between agent and UI
+- **Next.js Frontend** (port 3000) - The web interface
+- **Agent Server** (port 8001) - FastAPI server wrapping your agent
 
 ### 3. Use the UI
 
 1. Open `http://localhost:3000`
 2. Click "Create Session"
 3. Type your message and press Enter
-4. Watch the agent respond in real-time!
+4. Watch the agent respond in real-time with full markdown rendering!
 
-That's it! The UI and agent communicate automatically via WebSocket hooks.
+That's it! All conversations are automatically saved to `strands_sessions/` and persist across restarts.
 
 ## How It Works
 
@@ -98,12 +99,13 @@ def my_tool(arg: str) -> str:
     """
     return result
 
-def create_my_agent(ui_hooks=None):
-    """Create your agent with optional UI hooks"""
+def create_my_agent(session_id=None, ui_hooks=None):
+    """Create your agent with optional session persistence and UI hooks"""
     hooks = [ui_hooks] if ui_hooks else []
 
     return Agent(
         model=your_model,
+        session_id=session_id,  # Enables persistence to strands_sessions/
         tools=[my_tool],
         hooks=hooks,
         system_prompt="Your prompt"
@@ -122,6 +124,7 @@ from ui_hooks import UIHooks
 @app.post("/chat")
 async def chat(request: ChatRequest):
     agent = create_my_agent(
+        session_id=request.session_id,  # Enables persistence
         ui_hooks=UIHooks(request.session_id, "ws://localhost:8000")
     )
     response = agent(request.message)
@@ -130,18 +133,52 @@ async def chat(request: ChatRequest):
 
 ### Step 3: Run Everything
 
+From the project root:
+
 ```bash
-# Terminal 1: UI + WebSocket
-cd frontend && npm run start:all
+# Start all services (WebSocket + Frontend + Agent Server)
+npm start
 
-# Terminal 2: Agent Server
-uv run agent_server.py
-
-# Terminal 3: Test without UI (optional)
+# Or test your agent without UI
 uv run my_agent.py "Your question"
 ```
 
-**That's it!** Just edit `my_agent.py` with your tools and configuration.
+**That's it!** Just edit `my_agent.py` with your tools and configuration. All sessions are automatically persisted to `strands_sessions/` and can be reviewed even after restarting the servers.
+
+## Session Persistence
+
+All agent conversations are automatically saved to the `strands_sessions/` directory:
+
+```
+strands_sessions/
+└── session_<uuid>/
+    ├── session.json           # Session metadata
+    └── agents/
+        └── agent_default/
+            └── messages/       # All conversation messages
+                ├── message_0.json
+                ├── message_1.json
+                └── ...
+```
+
+**Benefits:**
+- ✅ Conversations persist across server restarts
+- ✅ Agent maintains full context from previous messages
+- ✅ Review any session's complete history
+- ✅ Sessions automatically resume when agent is recreated with same session_id
+
+**API Endpoints:**
+- `GET /sessions` - List all saved sessions
+- `GET /sessions/{session_id}/messages` - Get all messages for a session
+
+**Example:**
+```bash
+# List all sessions
+curl http://localhost:8001/sessions
+
+# Get messages from a specific session
+curl http://localhost:8001/sessions/<session-id>/messages
+```
 
 ## Installation Details
 
@@ -154,9 +191,11 @@ uv run my_agent.py "Your question"
 ### UI Setup
 
 ```bash
-cd frontend
+# From project root
 npm install
 ```
+
+This installs all frontend dependencies.
 
 ### Python Dependencies
 
@@ -200,20 +239,28 @@ agent = Agent(
 response = agent("Your query")
 ```
 
-### Running the UI
+### Running the Application
 
-**Option 1: Start everything together**
+**Recommended: Start everything together (from project root)**
 ```bash
-cd frontend && npm run start:all
+npm start
 ```
 
-**Option 2: Start separately**
+This starts:
+- WebSocket server (port 8000)
+- Next.js frontend (port 3000)
+- Agent server (port 8001)
+
+**Advanced: Start services separately**
 ```bash
 # Terminal 1: WebSocket server
-cd frontend && npm run ws
+npm run ws
 
 # Terminal 2: Next.js UI
-cd frontend && npm run dev
+npm run dev:frontend
+
+# Terminal 3: Agent server
+npm run dev:backend
 ```
 
 ### Viewing Agent Activity
@@ -231,25 +278,32 @@ cd frontend && npm run dev
 
 ```
 strands-ui/
+├── package.json             # Root package - npm start runs everything
+├── agent_server.py          # FastAPI server with session endpoints
+├── my_agent.py              # Your agent configuration
 ├── ui_hooks.py              # Standalone hook provider (copy this!)
 ├── example-agent.py         # Example agent with UI integration
 │
-├── frontend/
-│   ├── server.js            # WebSocket relay server
-│   ├── package.json         # Includes ws + concurrently
-│   ├── app/
-│   │   ├── page.tsx         # Main chat interface
-│   │   └── globals.css      # Styles
-│   ├── components/
-│   │   ├── ChatMessage.tsx      # Message display
-│   │   ├── ChatInput.tsx        # Input component
-│   │   ├── ToolCallDisplay.tsx  # Tool visualization
-│   │   └── ThinkingDisplay.tsx  # Thinking indicator
-│   └── lib/
-│       ├── websocket.ts     # WebSocket client
-│       └── store.ts         # State management
+├── strands_sessions/        # Persistent session storage (auto-created)
+│   └── session_<uuid>/
+│       ├── session.json
+│       └── agents/agent_default/messages/
 │
-└── README.md
+└── frontend/
+    ├── server.js            # WebSocket relay server
+    ├── package.json         # Includes markdown, ws, concurrently
+    ├── app/
+    │   ├── page.tsx         # Main chat interface
+    │   ├── layout.tsx       # Includes highlight.js styles
+    │   └── globals.css      # Styles
+    ├── components/
+    │   ├── ChatMessage.tsx      # Message display with markdown rendering
+    │   ├── ChatInput.tsx        # Input component
+    │   ├── ToolCallDisplay.tsx  # Tool visualization
+    │   └── ThinkingDisplay.tsx  # Thinking indicator
+    └── lib/
+        ├── websocket.ts     # WebSocket client
+        └── store.ts         # State management
 ```
 
 ## How It Works

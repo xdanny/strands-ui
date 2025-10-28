@@ -120,6 +120,95 @@ async def health():
     return {"status": "healthy", "message": "Agent server is running"}
 
 
+@app.get("/sessions")
+async def list_sessions():
+    """
+    List all persisted sessions.
+
+    Returns:
+        List of session metadata including session_id, created_at, message count
+    """
+    try:
+        if not SESSIONS_DIR.exists():
+            return {"sessions": []}
+
+        sessions = []
+        for session_dir in SESSIONS_DIR.glob("session_*"):
+            session_json = session_dir / "session.json"
+            if session_json.exists():
+                with open(session_json, "r") as f:
+                    session_data = json.load(f)
+
+                # Count messages
+                messages_dir = session_dir / "agents" / "agent_default" / "messages"
+                message_count = len(list(messages_dir.glob("*.json"))) if messages_dir.exists() else 0
+
+                sessions.append({
+                    "session_id": session_data["session_id"],
+                    "created_at": session_data["created_at"],
+                    "updated_at": session_data["updated_at"],
+                    "message_count": message_count
+                })
+
+        # Sort by updated_at descending
+        sessions.sort(key=lambda x: x["updated_at"], reverse=True)
+        return {"sessions": sessions}
+
+    except Exception as e:
+        print(f"[Agent Server] Error listing sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/sessions/{session_id}/messages")
+async def get_session_messages(session_id: str):
+    """
+    Get all messages for a specific session.
+
+    Args:
+        session_id: The session ID to load
+
+    Returns:
+        List of messages with role, content, and timestamp
+    """
+    try:
+        session_dir = SESSIONS_DIR / f"session_{session_id}"
+        if not session_dir.exists():
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        messages_dir = session_dir / "agents" / "agent_default" / "messages"
+        if not messages_dir.exists():
+            return {"messages": []}
+
+        messages = []
+        for message_file in sorted(messages_dir.glob("message_*.json")):
+            with open(message_file, "r") as f:
+                message_data = json.load(f)
+
+                # Extract content from message
+                content = ""
+                if "message" in message_data and "content" in message_data["message"]:
+                    content_list = message_data["message"]["content"]
+                    if isinstance(content_list, list) and len(content_list) > 0:
+                        content = content_list[0].get("text", "")
+
+                messages.append({
+                    "message_id": message_data["message_id"],
+                    "role": message_data["message"]["role"],
+                    "content": content,
+                    "created_at": message_data["created_at"]
+                })
+
+        return {"messages": messages}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Agent Server] Error loading session messages: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/")
 async def root():
     return {
@@ -127,6 +216,8 @@ async def root():
         "status": "running",
         "endpoints": {
             "/chat": "POST - Send message to agent",
+            "/sessions": "GET - List all sessions",
+            "/sessions/{session_id}/messages": "GET - Get messages for a session",
             "/health": "GET - Health check"
         }
     }
