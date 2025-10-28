@@ -9,7 +9,7 @@ import { ThinkingDisplay } from "@/components/ThinkingDisplay";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
-import { createSession, getSessionEvents, addSessionEvent } from "@/lib/sessions";
+import { createSession, getSessionEvents, addSessionEvent, listSessions } from "@/lib/sessions";
 import { StrandsWebSocket, WSEvent } from "@/lib/websocket";
 import { AlertCircle, Copy, Check } from "lucide-react";
 
@@ -54,6 +54,10 @@ export default function Home() {
   const handleNewSession = () => {
     // Create new session in localStorage
     const session = createSession();
+
+    // Update sessions list in store
+    const updatedSessions = listSessions();
+    useStore.getState().setSessions(updatedSessions);
 
     // Connect to it
     handleSelectSession(session.session_id);
