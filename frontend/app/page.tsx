@@ -51,12 +51,12 @@ export default function Home() {
     }
   }, [events]);
 
-  const handleNewSession = () => {
+  const handleNewSession = async () => {
     // Create new session in localStorage
     const session = createSession();
 
     // Update sessions list in store
-    const updatedSessions = listSessions();
+    const updatedSessions = await listSessions();
     useStore.getState().setSessions(updatedSessions);
 
     // Connect to it
@@ -72,8 +72,8 @@ export default function Home() {
         ws.close();
       }
 
-      // Load existing events from localStorage
-      const existingEvents = getSessionEvents(sessionId);
+      // Load existing events from backend or localStorage
+      const existingEvents = await getSessionEvents(sessionId);
       setEvents(existingEvents);
 
       // Set as current session

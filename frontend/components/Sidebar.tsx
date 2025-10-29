@@ -23,8 +23,8 @@ export function Sidebar({ onNewSession, onSelectSession, currentSessionId }: Sid
     loadSessions();
   }, []);
 
-  const loadSessions = () => {
-    const sessions = listSessions();
+  const loadSessions = async () => {
+    const sessions = await listSessions();
     setSessions(sessions);
   };
 
