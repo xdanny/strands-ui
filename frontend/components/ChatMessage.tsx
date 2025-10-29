@@ -1,6 +1,10 @@
 import { WSEvent } from "@/lib/websocket";
 import { cn } from "@/lib/utils";
 import { User, Bot, AlertCircle } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import rehypeRaw from "rehype-raw";
 
 type ChatMessageProps = {
   event: WSEvent;
@@ -71,8 +75,80 @@ export function ChatMessage({ event }: ChatMessageProps) {
       </div>
 
       {/* Content */}
-      <div className="text-sm leading-relaxed whitespace-pre-wrap overflow-x-auto">
-        {isError ? event.error : content}
+      <div className="text-sm leading-relaxed overflow-x-auto prose prose-sm dark:prose-invert max-w-none">
+        {isError ? (
+          <div className="whitespace-pre-wrap">{event.error}</div>
+        ) : (
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeHighlight, rehypeRaw]}
+            components={{
+              code: ({ node, inline, className, children, ...props }) => {
+                const match = /language-(\w+)/.exec(className || "");
+                return !inline ? (
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                ) : (
+                  <code
+                    className="bg-muted px-1 py-0.5 rounded text-xs font-mono"
+                    {...props}
+                  >
+                    {children}
+                  </code>
+                );
+              },
+              pre: ({ node, children, ...props }) => (
+                <pre
+                  className="bg-muted p-3 rounded-md overflow-x-auto my-2"
+                  {...props}
+                >
+                  {children}
+                </pre>
+              ),
+              p: ({ node, children, ...props }) => (
+                <p className="mb-2 last:mb-0" {...props}>
+                  {children}
+                </p>
+              ),
+              ul: ({ node, children, ...props }) => (
+                <ul className="list-disc list-inside mb-2" {...props}>
+                  {children}
+                </ul>
+              ),
+              ol: ({ node, children, ...props }) => (
+                <ol className="list-decimal list-inside mb-2" {...props}>
+                  {children}
+                </ol>
+              ),
+              li: ({ node, children, ...props }) => (
+                <li className="mb-1" {...props}>
+                  {children}
+                </li>
+              ),
+              a: ({ node, children, ...props }) => (
+                <a
+                  className="text-primary hover:underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  {...props}
+                >
+                  {children}
+                </a>
+              ),
+              blockquote: ({ node, children, ...props }) => (
+                <blockquote
+                  className="border-l-4 border-primary/30 pl-4 italic my-2"
+                  {...props}
+                >
+                  {children}
+                </blockquote>
+              ),
+            }}
+          >
+            {content}
+          </ReactMarkdown>
+        )}
       </div>
     </div>
   );
