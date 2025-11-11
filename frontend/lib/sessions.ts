@@ -1,19 +1,26 @@
 /**
- * Local session management
+ * Session management with backend persistence
  *
- * Sessions are managed in the frontend using localStorage.
- * Each session tracks its ID, creation time, and event history.
+ * Sessions are now fetched from the backend (agent_server.py on port 8001)
+ * which reads from the strands_sessions/ directory. localStorage is used
+ * as a cache for WebSocket events during active sessions.
  */
+
+import { fetchSessions, fetchSessionMessages } from './api';
 
 export interface Session {
   session_id: string;
   created_at: string;
+  updated_at?: string;
   message_count: number;
 }
 
-const SESSIONS_KEY = 'strands_ui_sessions';
 const EVENTS_KEY_PREFIX = 'strands_ui_events_';
 
+/**
+ * Create a new session (generates UUID, doesn't save to backend yet)
+ * Session will be created in backend when first message is sent
+ */
 export function createSession(): Session {
   const session: Session = {
     session_id: crypto.randomUUID(),
@@ -21,64 +28,96 @@ export function createSession(): Session {
     message_count: 0,
   };
 
-  // Add to sessions list
-  const sessions = listSessions();
-  sessions.unshift(session);
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-
-  // Initialize empty events array
+  // Initialize empty events array in localStorage cache
   localStorage.setItem(EVENTS_KEY_PREFIX + session.session_id, JSON.stringify([]));
 
   return session;
 }
 
-export function listSessions(): Session[] {
-  const data = localStorage.getItem(SESSIONS_KEY);
-  return data ? JSON.parse(data) : [];
+/**
+ * List all sessions from the backend
+ * Falls back to empty array if backend is unavailable
+ */
+export async function listSessions(): Promise<Session[]> {
+  try {
+    const sessions = await fetchSessions();
+    return sessions;
+  } catch (error) {
+    console.error('Failed to fetch sessions from backend:', error);
+    // Fallback: return empty array if backend unavailable
+    return [];
+  }
 }
 
-export function getSession(sessionId: string): Session | null {
-  const sessions = listSessions();
-  return sessions.find(s => s.session_id === sessionId) || null;
+/**
+ * Get a specific session from the backend
+ */
+export async function getSession(sessionId: string): Promise<Session | null> {
+  try {
+    const sessions = await listSessions();
+    return sessions.find(s => s.session_id === sessionId) || null;
+  } catch (error) {
+    console.error('Failed to get session:', error);
+    return null;
+  }
 }
 
+/**
+ * Delete session (currently no backend endpoint, only clears localStorage cache)
+ * TODO: Add delete endpoint to backend
+ */
 export function deleteSession(sessionId: string): void {
-  // Remove from sessions list
-  const sessions = listSessions();
-  const filtered = sessions.filter(s => s.session_id !== sessionId);
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(filtered));
-
-  // Remove events
+  // Remove events from localStorage cache
   localStorage.removeItem(EVENTS_KEY_PREFIX + sessionId);
 }
 
+/**
+ * Delete all sessions (currently only clears localStorage cache)
+ * TODO: Add delete all endpoint to backend
+ */
 export function deleteAllSessions(): void {
-  const sessions = listSessions();
-
-  // Remove all events
-  sessions.forEach(session => {
-    localStorage.removeItem(EVENTS_KEY_PREFIX + session.session_id);
+  // Clear all event caches
+  Object.keys(localStorage).forEach(key => {
+    if (key.startsWith(EVENTS_KEY_PREFIX)) {
+      localStorage.removeItem(key);
+    }
   });
-
-  // Clear sessions list
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify([]));
 }
 
-export function getSessionEvents(sessionId: string): any[] {
+/**
+ * Get session events - tries backend first, falls back to localStorage cache
+ */
+export async function getSessionEvents(sessionId: string): Promise<any[]> {
+  try {
+    // Try to fetch from backend first
+    const messages = await fetchSessionMessages(sessionId);
+
+    if (messages && messages.length > 0) {
+      // Convert backend messages to event format
+      const events = messages.map((msg: any) => ({
+        type: msg.role === 'user' ? 'user_input' : 'message',
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.created_at,
+        session_id: sessionId,
+      }));
+      return events;
+    }
+  } catch (error) {
+    console.log('No backend messages, using localStorage cache:', error);
+  }
+
+  // Fallback to localStorage cache
   const data = localStorage.getItem(EVENTS_KEY_PREFIX + sessionId);
   return data ? JSON.parse(data) : [];
 }
 
+/**
+ * Add event to localStorage cache (for real-time WebSocket events)
+ */
 export function addSessionEvent(sessionId: string, event: any): void {
-  const events = getSessionEvents(sessionId);
+  const data = localStorage.getItem(EVENTS_KEY_PREFIX + sessionId);
+  const events = data ? JSON.parse(data) : [];
   events.push(event);
   localStorage.setItem(EVENTS_KEY_PREFIX + sessionId, JSON.stringify(events));
-
-  // Update message count
-  const sessions = listSessions();
-  const session = sessions.find(s => s.session_id === sessionId);
-  if (session) {
-    session.message_count = events.length;
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-  }
 }

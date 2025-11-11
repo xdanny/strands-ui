@@ -1,17 +1,28 @@
 """
-Example Agent Configuration
+Example Agent Configuration - TEMPLATE
 
-This demonstrates how to create a reusable Strands agent that can be used
-with or without the UI. Your agent logic stays separate from the UI integration.
+This is a template showing how to structure your Strands agent. Copy this file
+to your own project and customize it with your tools, model, and logic.
+
+Key design pattern:
+- Agent creation is separate from UI integration
+- Same agent can run with or without UI visualization
+- Session persistence is optional but recommended
 
 Usage:
-    # Without UI
+    # Standalone (no UI)
     agent = create_my_agent()
     response = agent("What's the weather?")
 
-    # With UI (from agent_server.py)
-    agent = create_my_agent(ui_hooks=UIHooks(...))
+    # With UI visualization (from agent_server.py)
+    agent = create_my_agent(
+        session_id=session_id,
+        ui_hooks=UIHooks(session_id, "ws://localhost:8000")
+    )
     response = agent("What's the weather?")
+
+    # CLI usage (no UI)
+    uv run my_agent.py "What's the weather?"
 """
 
 from strands import Agent, tool
@@ -67,17 +78,19 @@ def calculate(expression: str) -> str:
         return f"Error calculating '{expression}': {str(e)}"
 
 
-def create_my_agent(ui_hooks=None) -> Agent:
+def create_my_agent(session_id=None, ui_hooks=None) -> Agent:
     """
-    Create your custom agent with optional UI hooks.
+    Create your custom agent with optional session persistence and UI hooks.
 
     This function encapsulates all your agent configuration:
     - Model selection and parameters
     - Tools available to the agent
     - System prompt
+    - Optional session persistence
     - Optional UI hooks for visualization
 
     Args:
+        session_id: Optional session ID for persistence (stores in strands_sessions/)
         ui_hooks: Optional UIHooks instance for UI visualization
 
     Returns:
@@ -131,9 +144,15 @@ def create_my_agent(ui_hooks=None) -> Agent:
     if hooks:
         print(f"[Agent] Hook types: {[type(h).__name__ for h in hooks]}")
 
+    if session_id:
+        print(f"[Agent] Using session persistence: {session_id}")
+
     # Create and return the agent
     agent = Agent(
         model=model,
+
+        # Add session persistence if session_id is provided
+        session_id=session_id,
 
         # Add all your tools
         tools=[
